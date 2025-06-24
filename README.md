@@ -1,1 +1,1 @@
-# ohyun2025-project
+# ohyun2025-gameDevIdeaStore

@@ -1,0 +1,524 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Game Dev Idea Store</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <nav>
+        <div class="nav-header" style="position:relative;">
+            <h1>Game Dev Idea Store</h1>
+            <div id="auth-btns" style="position:absolute;top:1.2rem;right:2rem;display:flex;gap:0.5rem;"></div>
+        </div>
+        <div class="nav-menu">
+            <a href="#" class="nav-item" id="nav-login">👤 로그인</a>
+            <a href="#" class="nav-item" id="nav-search">🔍 사용자 검색</a>
+            <a href="#" class="nav-item" id="nav-board">💡 게시판</a>
+        </div>
+    </nav>
+    <main>
+        <div class="section-divider" id="user-section" style="display:none;">
+            <h2 class="section-title">👤 사용자 관리</h2>
+            <div class="card">
+                <div id="user-login" class="active">
+                    <h3>시작하기</h3>
+                    <form id="login-form">
+                        <input type="text" id="username" placeholder="사용자 이름을 입력하세요" required>
+                        <input type="password" id="password" placeholder="비밀번호를 입력하세요" required>
+                        <button type="submit" class="btn-submit">입장하기</button>
+                        <button type="button" id="login-signup-btn" class="btn-submit" style="margin-left:0.5rem;">회원가입</button>
+                    </form>
+                </div>
+                <div id="welcome-message" class="hidden">
+                    <h3>환영합니다, <span id="current-user"></span>님!</h3>
+                    <button id="logout-btn" class="btn-submit">로그아웃</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="section-divider" id="search-section">
+            <h2 class="section-title">🔍 사용자 검색</h2>
+            <div class="card">
+                <div class="search-container">
+                    <input type="text" id="search-user" placeholder="사용자 이름으로 검색...">
+                    <button id="search-btn" class="btn-submit">검색</button>
+                </div>
+                <div id="search-results">
+                    <!-- 검색 결과가 여기에 표시됩니다 -->
+                </div>
+            </div>
+        </div>
+
+        <div class="section-divider" id="board-section">
+            <h2 class="section-title">💡 게시판</h2>
+            <section id="posts">
+                <!-- 게시물들이 여기에 동적으로 추가됩니다 -->
+            </section>
+        </div>
+    </main>
+
+    <template id="post-template">
+        <article class="post card">
+            <h3 class="post-title"></h3>
+            <p class="post-content"></p>
+            <div class="post-author"></div>
+            <div class="post-actions">
+                <button class="btn-edit hidden">수정</button>
+                <button class="btn-delete hidden">삭제</button>
+            </div>
+        </article>
+    </template>
+
+    <button id="add-idea-btn" class="hidden" style="position:fixed;right:32px;bottom:32px;width:56px;height:56px;border-radius:50%;font-size:2em;">+</button>
+    <script>
+    // 목차 클릭 시 해당 섹션으로 스크롤(정확히 맞추기, 네비게이션 높이만큼 보정)
+    function scrollToSection(sectionId) {
+        const target = document.getElementById(sectionId);
+        if (!target) return;
+        // 네비게이션 높이 측정
+        const nav = document.querySelector('nav');
+        const navHeight = nav ? nav.offsetHeight : 0;
+        const y = target.getBoundingClientRect().top + window.pageYOffset - navHeight;
+        window.scrollTo({ top: y, behavior: 'smooth' });
+    }
+    document.getElementById('nav-login').addEventListener('click', function(e) {
+        e.preventDefault();
+        scrollToSection('user-section');
+    });
+    document.getElementById('nav-search').addEventListener('click', function(e) {
+        e.preventDefault();
+        scrollToSection('search-section');
+    });
+    document.getElementById('nav-board').addEventListener('click', function(e) {
+        e.preventDefault();
+        scrollToSection('board-section');
+        loadPosts();
+    });
+
+    // 게시글 필터링 상태 전역 변수
+    let filterUser = null;
+
+    // 사용자 검색 결과에서 게시물 보기 버튼 동작
+    document.getElementById('search-results').addEventListener('click', function(e) {
+        if (e.target.classList.contains('btn-submit')) {
+            const user = e.target.closest('.user-card').querySelector('span').textContent;
+            filterUser = user;
+            loadPosts(filterUser);
+            // 게시판 섹션으로 스크롤
+            scrollToSection('board-section');
+        }
+    });
+
+    // + 버튼 클릭 시 게시글 작성 모달 띄우기 (기존 idea-modal 제거, 새 모달 방식 적용)
+    document.getElementById('add-idea-btn').addEventListener('click', function() {
+        showCreatePostModal();
+    });
+
+    // 게시글 작성 모달 함수
+    function showCreatePostModal() {
+        // 기존 모달이 있으면 제거
+        let oldModal = document.getElementById('create-post-modal');
+        if (oldModal) oldModal.remove();
+        // 모달 생성
+        const modal = document.createElement('div');
+        modal.id = 'create-post-modal';
+        modal.style.position = 'fixed';
+        modal.style.top = '0';
+        modal.style.left = '0';
+        modal.style.width = '100vw';
+        modal.style.height = '100vh';
+        modal.style.background = 'rgba(0,0,0,0.6)';
+        modal.style.display = 'flex';
+        modal.style.alignItems = 'center';
+        modal.style.justifyContent = 'center';
+        modal.style.zIndex = '9999';
+        modal.innerHTML = `
+            <div style="background:#1E1E1E;padding:2rem;border-radius:8px;max-width:90vw;max-height:80vh;overflow:auto;box-shadow:0 4px 32px #000;position:relative;">
+                <button id="close-create-post-modal" style="position:absolute;top:8px;right:12px;font-size:1.5rem;background:none;border:none;color:#fff;cursor:pointer;">&times;</button>
+                <h2 style="color:#FF0000;margin-bottom:1rem;">게시물 작성</h2>
+                <form id="modal-idea-form">
+                    <input id="modal-title" placeholder="제목" required style="width:100%;margin-bottom:1rem;padding:0.5rem;" />
+                    <textarea id="modal-content" placeholder="내용" required style="width:100%;min-height:120px;margin-bottom:1rem;padding:0.5rem;"></textarea>
+                    <button type="submit" class="btn-submit" style="width:100%;">등록</button>
+                </form>
+            </div>
+        `;
+        document.body.appendChild(modal);
+        document.getElementById('close-create-post-modal').onclick = function() {
+            modal.remove();
+        };
+        // 바깥 클릭 시 닫기
+        modal.addEventListener('click', function(e) {
+            if (e.target === modal) modal.remove();
+        });
+        // 폼 제출 이벤트
+        document.getElementById('modal-idea-form').addEventListener('submit', function(e) {
+            e.preventDefault();
+            const title = document.getElementById('modal-title').value.trim();
+            const content = document.getElementById('modal-content').value.trim();
+            if (!title || !content) {
+                alert('제목과 내용을 입력하세요.');
+                return;
+            }
+            let posts = JSON.parse(localStorage.getItem('posts') || '[]');
+            posts.push({
+                id: Date.now(),
+                userId: localStorage.getItem('currentUser'),
+                title,
+                content
+            });
+            localStorage.setItem('posts', JSON.stringify(posts));
+            modal.remove();
+            loadPosts(filterUser);
+            alert('게시물이 성공적으로 작성되었습니다!');
+        });
+    }
+
+    // 게시글 로드 (전체 또는 특정 사용자)
+    function loadPosts(user = null) {
+        let posts = JSON.parse(localStorage.getItem('posts') || '[]');
+        const postsContainer = document.getElementById('posts');
+        const postTemplate = document.getElementById('post-template');
+        postsContainer.innerHTML = '';
+        // 필터링된 경우 상단에 전체 게시글 보기 버튼 추가
+        if (user) {
+            const allBtn = document.createElement('button');
+            allBtn.textContent = '전체 게시글 보기';
+            allBtn.className = 'btn-submit';
+            allBtn.style.marginBottom = '1rem';
+            allBtn.onclick = function() {
+                filterUser = null;
+                loadPosts();
+            };
+            postsContainer.appendChild(allBtn);
+            posts = posts.filter(post => post.userId === user);
+        }
+        posts.forEach(post => {
+            const el = postTemplate.content.cloneNode(true);
+            el.querySelector('.post-title').textContent = post.title;
+            el.querySelector('.post-content').textContent = post.content;
+            el.querySelector('.post-author').textContent = `작성자: ${post.userId}`;
+            // 본인만 수정/삭제
+            if (post.userId === localStorage.getItem('currentUser')) {
+                el.querySelector('.btn-edit').classList.remove('hidden');
+                el.querySelector('.btn-delete').classList.remove('hidden');
+                el.querySelector('.btn-edit').onclick = () => editPost(post.id);
+                el.querySelector('.btn-delete').onclick = () => deletePost(post.id);
+            } else {
+                el.querySelector('.btn-edit').classList.add('hidden');
+                el.querySelector('.btn-delete').classList.add('hidden');
+            }
+            // 제목 클릭 시 모달로 내용 보여주기
+            el.querySelector('.post-title').style.cursor = 'pointer';
+            el.querySelector('.post-title').addEventListener('click', function() {
+                showPostModal(post.title, post.content, post.userId);
+            });
+            postsContainer.appendChild(el);
+        });
+    }
+
+    // 게시글 내용 모달 표시 함수 추가
+    function showPostModal(title, content, userId) {
+        // 기존 모달이 있으면 제거
+        let oldModal = document.getElementById('post-view-modal');
+        if (oldModal) oldModal.remove();
+        // 모달 생성
+        const modal = document.createElement('div');
+        modal.id = 'post-view-modal';
+        modal.style.position = 'fixed';
+        modal.style.top = '0';
+        modal.style.left = '0';
+        modal.style.width = '100vw';
+        modal.style.height = '100vh';
+        modal.style.background = 'rgba(0,0,0,0.6)';
+        modal.style.display = 'flex';
+        modal.style.alignItems = 'center';
+        modal.style.justifyContent = 'center';
+        modal.style.zIndex = '9999';
+        modal.innerHTML = `
+            <div style="background:#1E1E1E;padding:2rem;border-radius:8px;max-width:90vw;max-height:80vh;overflow:auto;box-shadow:0 4px 32px #000;position:relative;">
+                <button id="close-post-view-modal" style="position:absolute;top:8px;right:12px;font-size:1.5rem;background:none;border:none;color:#fff;cursor:pointer;">&times;</button>
+                <h2 style="color:#FF0000;margin-bottom:1rem;">${title}</h2>
+                <div style="color:#fff;white-space:pre-line;margin-bottom:1rem;">${content}</div>
+                <div style="color:#888;font-size:0.9em;">작성자: ${userId}</div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+        document.getElementById('close-post-view-modal').onclick = function() {
+            modal.remove();
+        };
+        // 바깥 클릭 시 닫기
+        modal.addEventListener('click', function(e) {
+            if (e.target === modal) modal.remove();
+        });
+    }
+
+    // 게시글 수정
+    function editPost(postId) {
+        let posts = JSON.parse(localStorage.getItem('posts') || '[]');
+        const idx = posts.findIndex(p => p.id === postId && p.userId === localStorage.getItem('currentUser'));
+        if (idx === -1) return;
+        const newTitle = prompt('새 제목을 입력하세요:', posts[idx].title);
+        const newContent = prompt('새 내용을 입력하세요:', posts[idx].content);
+        if (newTitle && newContent) {
+            posts[idx].title = newTitle;
+            posts[idx].content = newContent;
+            localStorage.setItem('posts', JSON.stringify(posts));
+            loadPosts(filterUser);
+        }
+    }
+
+    // 게시글 삭제
+    function deletePost(postId) {
+        let posts = JSON.parse(localStorage.getItem('posts') || '[]');
+        posts = posts.filter(p => !(p.id === postId && p.userId === localStorage.getItem('currentUser')));
+        localStorage.setItem('posts', JSON.stringify(posts));
+        loadPosts(filterUser);
+    }
+
+    // 로그인/회원가입/로그아웃 및 UI
+    // 우측 상단 로그인/회원가입 버튼 렌더링
+    function renderHeaderAuthBtns() {
+        const authBtns = document.getElementById('auth-btns');
+        if (!authBtns) return;
+        authBtns.innerHTML = '';
+        // 로그인 버튼
+        const loginBtn = document.createElement('button');
+        loginBtn.id = 'header-login-btn';
+        loginBtn.className = 'btn-submit';
+        loginBtn.textContent = '로그인';
+        loginBtn.onclick = function() { showLoginModal(); };
+        // 회원가입 버튼
+        const signupBtn = document.createElement('button');
+        signupBtn.id = 'header-signup-btn';
+        signupBtn.className = 'btn-submit';
+        signupBtn.textContent = '회원가입';
+        signupBtn.onclick = function() { showSignupModal(); };
+        // 로그아웃 버튼
+        const logoutBtn = document.createElement('button');
+        logoutBtn.id = 'header-logout-btn';
+        logoutBtn.className = 'btn-submit';
+        logoutBtn.textContent = '로그아웃';
+        logoutBtn.onclick = function() {
+            localStorage.removeItem('currentUser');
+            renderHeaderAuthBtns();
+            document.getElementById('user-login').classList.add('active');
+            document.getElementById('user-login').classList.remove('hidden');
+            document.getElementById('welcome-message').classList.add('hidden');
+            document.getElementById('add-idea-btn').classList.add('hidden');
+            filterUser = null;
+            loadPosts();
+        };
+        const isLoggedIn = !!localStorage.getItem('currentUser');
+        if (isLoggedIn) {
+            // 사용자 이름 표시
+            const userSpan = document.createElement('span');
+            userSpan.textContent = localStorage.getItem('currentUser');
+            userSpan.style.color = '#fff';
+            userSpan.style.marginRight = '0.5rem';
+            userSpan.style.fontWeight = 'bold';
+            authBtns.appendChild(userSpan);
+            logoutBtn.style.display = 'inline-block';
+            authBtns.appendChild(logoutBtn);
+        } else {
+            loginBtn.style.display = 'inline-block';
+            signupBtn.style.display = 'inline-block';
+            authBtns.appendChild(loginBtn);
+            authBtns.appendChild(signupBtn);
+        }
+    }
+    document.addEventListener('DOMContentLoaded', function() {
+        renderHeaderAuthBtns();
+        loadPosts(); // 페이지 진입 시 게시판 항상 로드
+    });
+
+    // 로그인 모달 함수 추가
+    function showLoginModal() {
+        let oldModal = document.getElementById('login-modal');
+        if (oldModal) oldModal.remove();
+        const modal = document.createElement('div');
+        modal.id = 'login-modal';
+        modal.style.position = 'fixed';
+        modal.style.top = '0';
+        modal.style.left = '0';
+        modal.style.width = '100vw';
+        modal.style.height = '100vh';
+        modal.style.background = 'rgba(0,0,0,0.6)';
+        modal.style.display = 'flex';
+        modal.style.alignItems = 'center';
+        modal.style.justifyContent = 'center';
+        modal.style.zIndex = '9999';
+        modal.innerHTML = `
+            <div style="background:#1E1E1E;padding:2rem;border-radius:8px;max-width:90vw;max-height:80vh;overflow:auto;box-shadow:0 4px 32px #000;position:relative;">
+                <button id="close-login-modal" style="position:absolute;top:8px;right:12px;font-size:1.5rem;background:none;border:none;color:#fff;cursor:pointer;">&times;</button>
+                <h2 style="color:#FF0000;margin-bottom:1rem;">로그인</h2>
+                <form id="modal-login-form">
+                    <input id="modal-login-username" placeholder="아이디" required style="width:100%;margin-bottom:1rem;padding:0.5rem;" />
+                    <input id="modal-login-password" type="password" placeholder="비밀번호" required style="width:100%;margin-bottom:1rem;padding:0.5rem;" />
+                    <button type="submit" class="btn-submit" style="width:100%">로그인</button>
+                </form>
+            </div>
+        `;
+        document.body.appendChild(modal);
+        document.getElementById('close-login-modal').onclick = function() { modal.remove(); };
+        modal.addEventListener('click', function(e) { if (e.target === modal) modal.remove(); });
+        document.getElementById('modal-login-form').addEventListener('submit', function(e) {
+            e.preventDefault();
+            const username = document.getElementById('modal-login-username').value.trim();
+            const password = document.getElementById('modal-login-password').value.trim();
+            if (!username || !password) {
+                alert('아이디와 비밀번호를 입력하세요.');
+                return;
+            }
+            let users = JSON.parse(localStorage.getItem('users') || '{}');
+            if (!users[username]) {
+                alert('존재하지 않는 아이디입니다.');
+                return;
+            }
+            if (users[username].password !== password) {
+                alert('비밀번호가 일치하지 않습니다.');
+                return;
+            }
+            localStorage.setItem('currentUser', username);
+            // 사용자 관리창 UI 갱신
+            document.getElementById('user-login').classList.remove('active');
+            document.getElementById('user-login').classList.add('hidden');
+            document.getElementById('welcome-message').classList.remove('hidden');
+            document.getElementById('current-user').textContent = username;
+            document.getElementById('add-idea-btn').classList.remove('hidden');
+            filterUser = null;
+            loadPosts();
+            renderHeaderAuthBtns();
+            modal.remove();
+        });
+    }
+    // 최초 진입 시 헤더 버튼 상태 갱신
+    document.addEventListener('DOMContentLoaded', function() {
+        updateHeaderAuthBtns();
+    });
+
+    // 사용자 검색 기능 개선: users 객체에서 검색
+    document.getElementById('search-btn').addEventListener('click', searchUsersByName);
+    document.getElementById('search-user').addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') {
+            searchUsersByName();
+        }
+    });
+
+    function searchUsersByName() {
+        const searchTerm = document.getElementById('search-user').value.trim().toLowerCase();
+        const searchResults = document.getElementById('search-results');
+        if (!searchTerm) {
+            searchResults.innerHTML = '<p class="search-message">검색어를 입력하세요.</p>';
+            return;
+        }
+        let users = JSON.parse(localStorage.getItem('users') || '{}');
+        const matchedUsers = Object.keys(users).filter(user => user.toLowerCase().includes(searchTerm));
+        if (matchedUsers.length === 0) {
+            searchResults.innerHTML = '<p class="search-message">검색 결과가 없습니다.</p>';
+            return;
+        }
+        searchResults.innerHTML = '';
+        matchedUsers.forEach(user => {
+            const userCard = document.createElement('div');
+            userCard.className = 'user-card';
+            userCard.innerHTML = `
+                <span>${user}</span>
+                <button class="btn-submit">게시물 보기</button>
+            `;
+            searchResults.appendChild(userCard);
+        });
+    }
+
+    document.getElementById('login-form').addEventListener('submit', function(e) {
+        e.preventDefault();
+        const username = document.getElementById('username').value.trim();
+        const password = document.getElementById('password').value.trim();
+        if (!username || !password) {
+            alert('아이디와 비밀번호를 입력하세요.');
+            return;
+        }
+        let users = JSON.parse(localStorage.getItem('users') || '{}');
+        if (!users[username]) {
+            alert('존재하지 않는 아이디입니다.');
+            return;
+        }
+        if (users[username].password !== password) {
+            alert('비밀번호가 일치하지 않습니다.');
+            return;
+        }
+        localStorage.setItem('currentUser', username);
+        document.getElementById('user-login').classList.remove('active');
+        document.getElementById('user-login').classList.add('hidden');
+        document.getElementById('welcome-message').classList.remove('hidden');
+        document.getElementById('current-user').textContent = username;
+        document.getElementById('add-idea-btn').classList.remove('hidden');
+        filterUser = null;
+        loadPosts();
+    });
+
+    document.getElementById('logout-btn').addEventListener('click', function() {
+        localStorage.removeItem('currentUser');
+        document.getElementById('user-login').classList.add('active');
+        document.getElementById('user-login').classList.remove('hidden');
+        document.getElementById('welcome-message').classList.add('hidden');
+        document.getElementById('add-idea-btn').classList.add('hidden');
+        filterUser = null;
+        loadPosts();
+    });
+
+    document.getElementById('login-signup-btn').onclick = function() { showSignupModal(); };
+
+    function showSignupModal() {
+        let oldModal = document.getElementById('signup-modal');
+        if (oldModal) oldModal.remove();
+        const modal = document.createElement('div');
+        modal.id = 'signup-modal';
+        modal.style.position = 'fixed';
+        modal.style.top = '0';
+        modal.style.left = '0';
+        modal.style.width = '100vw';
+        modal.style.height = '100vh';
+        modal.style.background = 'rgba(0,0,0,0.6)';
+        modal.style.display = 'flex';
+        modal.style.alignItems = 'center';
+        modal.style.justifyContent = 'center';
+        modal.style.zIndex = '9999';
+        modal.innerHTML = `
+            <div style="background:#1E1E1E;padding:2rem;border-radius:8px;max-width:90vw;max-height:80vh;overflow:auto;box-shadow:0 4px 32px #000;position:relative;">
+                <button id="close-signup-modal" style="position:absolute;top:8px;right:12px;font-size:1.5rem;background:none;border:none;color:#fff;cursor:pointer;">&times;</button>
+                <h2 style="color:#FF0000;margin-bottom:1rem;">회원가입</h2>
+                <form id="modal-signup-form">
+                    <input id="modal-signup-username" placeholder="새 사용자 이름" required style="width:100%;margin-bottom:1rem;padding:0.5rem;" />
+                    <input id="modal-signup-password" type="password" placeholder="새 비밀번호" required style="width:100%;margin-bottom:1rem;padding:0.5rem;" />
+                    <button type="submit" class="btn-submit" style="width:100%">회원가입</button>
+                </form>
+            </div>
+        `;
+        document.body.appendChild(modal);
+        document.getElementById('close-signup-modal').onclick = function() { modal.remove(); };
+        modal.addEventListener('click', function(e) { if (e.target === modal) modal.remove(); });
+        document.getElementById('modal-signup-form').addEventListener('submit', function(e) {
+            e.preventDefault();
+            const username = document.getElementById('modal-signup-username').value.trim();
+            const password = document.getElementById('modal-signup-password').value.trim();
+            if (!username || !password) {
+                alert('아이디와 비밀번호를 입력하세요.');
+                return;
+            }
+            let users = JSON.parse(localStorage.getItem('users') || '{}');
+            if (users[username]) {
+                alert('이미 존재하는 아이디입니다.');
+                return;
+            }
+            users[username] = { password };
+            localStorage.setItem('users', JSON.stringify(users));
+            alert('회원가입이 완료되었습니다. 로그인 해주세요.');
+            modal.remove();
+        });
+    }
+    </script>
+</body>
+</html>
