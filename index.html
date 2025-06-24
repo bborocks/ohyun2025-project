@@ -172,6 +172,7 @@
             localStorage.setItem('posts', JSON.stringify(posts));
             modal.remove();
             loadPosts(filterUser);
+            updateAddIdeaBtnVisibility(); // 게시물 작성 후 +버튼 갱신
             alert('게시물이 성공적으로 작성되었습니다!');
         });
     }
@@ -328,10 +329,12 @@
             authBtns.appendChild(loginBtn);
             authBtns.appendChild(signupBtn);
         }
+        updateAddIdeaBtnVisibility(); // 로그인/로그아웃 시 +버튼 갱신
     }
     document.addEventListener('DOMContentLoaded', function() {
         renderHeaderAuthBtns();
         loadPosts(); // 페이지 진입 시 게시판 항상 로드
+        updateAddIdeaBtnVisibility(); // 최초 진입 시 +버튼 갱신
     });
 
     // 로그인 모달 함수 추가
@@ -518,6 +521,17 @@
             alert('회원가입이 완료되었습니다. 로그인 해주세요.');
             modal.remove();
         });
+    }
+
+    // +버튼 표시 상태를 로그인 상태에 따라 갱신하는 함수
+    function updateAddIdeaBtnVisibility() {
+        const addBtn = document.getElementById('add-idea-btn');
+        if (!addBtn) return;
+        if (localStorage.getItem('currentUser')) {
+            addBtn.classList.remove('hidden');
+        } else {
+            addBtn.classList.add('hidden');
+        }
     }
     </script>
 </body>
